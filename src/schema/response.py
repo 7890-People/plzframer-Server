@@ -177,7 +177,6 @@ class PostPreviewSchema(BaseModel):
     comment_count:int
     good_count: int
     post_id: int
-    # todo 게시글의 첫번째 사진에 대한 url 필요
 
 
     class Config:
