@@ -1,10 +1,7 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-
-
-# 데이터베이스 관련 상수
-DATABASE_URL = "mysql+pymysql://root:todos@127.0.0.1:3306/todos"
+DATABASE_URL = "mysql+pymysql://root:nongbu@127.0.0.1:3307/nongbu"
 
 # sqlalchemy로 sql 쿼리들을 대신 처리하려면 생성해야함 create_engine객체를 생성해야함
 # echo 옵션을 True로 전달해주면 sqlalchemy가 어떤 sql를 실행했는지를 출력해주는 디버깅 옵션
@@ -19,11 +16,9 @@ SessionFactory = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 
 # 파이썬 generator
-# fast api가
 def get_db():
     session = SessionFactory()
     try:
         yield session
     finally:
         session.close()
-

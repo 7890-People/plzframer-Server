@@ -1,60 +1,348 @@
-# repository íŒ¨í„´ì„ ìœ„í•œ íŒŒì¼
+# sqlalchemyÀÇ basemodelÀ» »ó¼Ó¹ÞÀº orm Å¬·¡½º¸¦ ½ÇÁ¦ mysql¿¡ ÀúÀåÇÏ±â À§ÇÑ Å¬·¡½ºµéÀÇ ¸ðÀ½(orm Å¬·¡½º¿Í 1´ë1´ëÀÀ)
+# ¼¼¼±À» ºÒ·¯¿À°í Àü´Þ¹ÞÀº sqlalchemy °´Ã¼¸¦ ¼¼¼ÇÇÔ¼ö¸¦ ÅëÇØ mysql°ú »óÈ£ÀÛ¿ëÇÏ´Â ³»ÀåÇÔ¼ö¸¦ Á¤ÀÇÇØÁÖ¸é µÊ
+
 from typing import List
-
 from fastapi import Depends
-from sqlalchemy import select, delete
+from service.firebase import delete_image_from_firebase_storage
+from sqlalchemy import select, delete, update, asc, desc
 from sqlalchemy.orm import Session
-
 from database.connection import get_db
-from database.orm import ToDo, User
+from database.orm import User, Disease, Farm, DiagnosisResult, Post, PostImage, Comment
+from datetime import datetime, timedelta
 
-
-class ToDoRepository:
-    def __init__(self, session: Session = Depends(get_db)):
-        self.session = session
-
-    # ì•„ëž˜ì˜ í™”ì‚´í‘œë¡œ Listë¥¼ ë‚˜íƒ€ë‚¸ ê²ƒì€ type hinting í‘œì‹œ
-    def get_todos(self) -> List[ToDo]:
-        return list(self.session.scalars(select(ToDo)))
-
-    def get_todo_by_todo_id(self, todo_id: int) -> ToDo | None:
-        # ToDoë¼ëŠ” í…Œì´ë¸” ì—­í• ì„ í•˜ëŠ” ormê°ì²´ë¥¼ ì„ íƒí•˜ê³ 
-        # í•´ë‹¹ í…Œì´ë¸”(orm)ì—ì„œ where() ë©”ì†Œë“œì˜ ì¡°ê±´ì— ë§žëŠ” ê°’ì„ ë¦¬í„´
-        # whereì˜ ì¡°ê±´ì— ë§žëŠ” ê°’ì´ ì—†ë‹¤ë©´ None ê°’ì„ ì¶œë ¥í•˜ê²Œ ë¨
-        return self.session.scalar(select(ToDo).where(ToDo.id == todo_id))
-
-    def create_todo(self, todo: ToDo) -> ToDo:
-        # sqlalchemyë¥¼ í†µí•´ì„œ ë°ì´í„°ë¥¼ ì €ìž¥í•˜ëŠ” ë°©ë²•
-        # orm ê°ì²´ ì—¬ê¸°ì„  todoë¥¼ ì„¸ì…˜ì˜¤ë¸Œì íŠ¸ì— ì¶”ê°€í•¨ add->commitì€ ê¹ƒì˜ ê·¸ê²ƒê³¼ ê±°ì˜ ìœ ì‚¬
-        self.session.add(instance=todo)
-        self.session.commit()
-        # todoê°ì²´ë¥¼ dbë¡œë¶€í„° ë‹¤ì‹œ ì½ì–´ì™€ì•¼
-        # dbì— ì €ìž¥ë  ë•Œ ìžë™ìƒì„±ëœ todo_idë¥¼ í™•ì¸í•  ìˆ˜ ìžˆë‹¤
-        self.session.refresh(todo)
-        return todo
-
-    # create_todoì™€ ë™ì¼í•œ ë™ìž‘ì„ í•˜ì§€ë§Œ ëª…ì‹œì ìœ¼ë¡œ ë¶„ë¦¬
-    def update_todo(self, todo: ToDo) -> ToDo:
-        self.session.add(instance=todo)
-        self.session.commit()  # db save
-        self.session.refresh(todo)  # í•„ìˆ˜ëŠ” ì•„ë‹˜
-        return todo
-
-    def delete_todo(self, todo_id: int) -> None:
-        self.session.execute(delete(ToDo).where(ToDo.id == todo_id))
-        self.session.commit()  # auto commitì„ falseë¡œ í•´ë†¨ê¸° ë•Œë¬¸ì— í•­ìƒ í•´ì¤˜ì•¼í•¨
 
 class UserRepository:
     def __init__(self, session: Session = Depends(get_db)):
         self.session = session
 
-    def get_user_by_username(self, username: str) -> User | None:
-        return self.session.scalar(
-            select(User).where(User.username == username)
-        )
+    def get_users(self) -> List[User]:
+        return list(self.session.scalars(select(User)))
+
+    def get_user_by_id(self, user_id: str) -> User | None:
+        return self.session.scalar(select(User).where(User.user_id == user_id))
 
     def save_user(self, user: User) -> User:
         self.session.add(instance=user)
-        self.session.commit()  # db save
-        self.session.refresh(instance=user)
+        self.session.commit()
+        self.session.refresh(user)
         return user
+
+    def update_user(self, user: User) -> User:
+        self.session.add(instance=user)
+        self.session.commit()
+        self.session.refresh(user)
+        return user
+
+    def delete_user(self, user_id: str) -> None:
+        self.session.execute(delete(User).where(User.user_id == user_id))
+        self.session.commit()
+
+
+class DiagnosisResultRepository:
+    def __init__(self, session: Session = Depends(get_db)):
+        self.session = session
+
+    def get_diagnosis_result(self) -> List[DiagnosisResult]:
+        return list(self.session.scalars(select(DiagnosisResult)))
+
+    def get_diagnosis_result_by_id(self, result_id: str) -> DiagnosisResult | None:
+        return self.session.scalar(select(DiagnosisResult).where(DiagnosisResult.result_id == result_id))
+
+    def get_diagnosis_results_by_user_id(self, user_id: str) -> List[DiagnosisResult]:
+        return list(self.session.scalars(select(DiagnosisResult).where(DiagnosisResult.user_id == user_id)))
+
+    def get_diagnosis_results_by_date(self, start_date: datetime, end_date: datetime) -> List[DiagnosisResult]:
+        # ½ÃÀÛ ³¯Â¥¿Í Á¾·á ³¯Â¥ »çÀÌÀÇ Áø´Ü °á°ú¸¦ Á¶È¸ÇÕ´Ï´Ù.
+        return list(self.session.scalars(select(DiagnosisResult).where(DiagnosisResult.created_time.between(start_date, end_date))))
+
+    # ÀÌÁ¦ ÀÌ ÇÔ¼ö´Â start_date¸¸ ¹Þ¾Æ¼­ ÇØ´ç ¿ùÀÇ ¸ðµç DiagnosisResult¸¦ ¹ÝÈ¯ÇÕ´Ï´Ù.
+    def get_diagnosis_results_by_month(self, start_date: datetime, user_id: str) -> List[DiagnosisResult]:
+        # ÇØ´ç ¿ùÀÇ Ã¹ ³¯À» °è»ê
+        month_start = start_date.replace(day=1)
+
+        # ´ÙÀ½ ´ÞÀÇ Ã¹ ³¯À» °è»êÇÑ ´ÙÀ½, ÇÏ·ç¸¦ »©¼­ ÀÌ¹ø ´ÞÀÇ ¸¶Áö¸· ³¯À» ¾ò½À´Ï´Ù.
+        # replace ¸Þ¼Òµå¸¦ »ç¿ëÇÏ¿© ¿ù¿¡ +1À» ÇÏ°í, day¸¦ 1·Î ¼³Á¤ÇÕ´Ï´Ù.
+        # ´Ü, 12¿ùÀÎ °æ¿ì¿¡´Â ´ÙÀ½ ÇØÀÇ 1¿ù·Î Ã³¸®ÇØ¾ß ÇÕ´Ï´Ù.
+        if start_date.month == 12:
+            month_end = start_date.replace(year=start_date.year + 1, month=1, day=1) - timedelta(days=1)
+        else:
+            month_end = start_date.replace(month=start_date.month + 1, day=1) - timedelta(days=1)
+
+        return list(self.session.scalars(select(DiagnosisResult).where(
+            DiagnosisResult.created_time.between(month_start, month_end),
+            DiagnosisResult.user_id == user_id
+        )))
+    def save_diagnosis_result(self, diagnosis_result: DiagnosisResult) -> DiagnosisResult:
+        self.session.add(instance=diagnosis_result)
+        self.session.commit()
+        self.session.refresh(diagnosis_result)
+        return diagnosis_result
+
+    def update_diagnosis_result(self, diagnosis_result: DiagnosisResult) -> DiagnosisResult:
+        self.session.add(instance=diagnosis_result)
+        self.session.commit()
+        self.session.refresh(diagnosis_result)
+        return diagnosis_result
+
+    def delete_diagnosis_result(self, result_id: str, user_id: str) -> None:
+        self.session.execute(delete(DiagnosisResult).where(
+            DiagnosisResult.result_id == result_id,
+            DiagnosisResult.user_id == user_id,
+        ))
+        self.session.commit()
+
+
+
+class FarmRepository:
+    def __init__(self, session: Session = Depends(get_db)):
+        self.session = session
+
+    def get_farms(self) -> List[Farm]:
+        return list(self.session.scalars(select(Farm)))
+
+    def get_farm_by_id(self, farm_id: int) -> Farm | None:
+        return self.session.scalar(select(Farm).where(Farm.farm_id == farm_id))
+
+    def get_farms_by_user_id(self, user_id: str) -> List[Farm]:
+        return list(self.session.scalars(select(Farm).where(Farm.user_id == user_id)))
+
+    def create_farm(self, farm: Farm) -> Farm:
+        self.session.add(instance=farm)
+        self.session.commit()
+        # self.session.refresh(farm)
+        return farm
+
+    def update_farm(self, farm: Farm) -> Farm:
+        self.session.add(instance=farm)
+        self.session.commit()
+        self.session.refresh(farm)
+        return farm
+
+    def delete_farm(self, farm_id: int) -> None:
+        self.session.execute(delete(Farm).where(Farm.farm_id == farm_id))
+        self.session.commit()
+
+class DiseaseRepository:
+    def __init__(self, session: Session = Depends(get_db)):
+        self.session = session
+
+    def get_diseases(self) -> List[Disease]:
+        return list(self.session.scalars(select(Disease)))
+
+    def get_disease_by_id(self, disease_id: str) -> Disease | None:
+        return self.session.scalar(select(Disease).where(
+            Disease.disease_id == disease_id
+        ))
+
+    def get_disease_by_plant_and_disease_name(self, plantName:str, disease_name: str) -> Disease | None:
+        return self.session.scalar(select(Disease).where(
+            Disease.plant == plantName,
+            Disease.kor_name == disease_name
+        ))
+
+    def create_disease(self, disease: Disease) -> Disease:
+        self.session.add(instance=disease)
+        self.session.commit()
+        self.session.refresh(disease)
+        return disease
+
+    def update_disease(self, disease: Disease) -> Disease:
+        self.session.add(instance=disease)
+        self.session.commit()
+        self.session.refresh(disease)
+        return disease
+
+    def delete_disease(self, disease_id: str) -> None:
+        self.session.execute(delete(Disease).where(Disease.disease_id == disease_id))
+        self.session.commit()
+
+
+class PostRepository:
+    def __init__(self, session: Session = Depends(get_db)):
+        self.session = session
+
+    def get_posts(self) -> List[Post]:
+        return list(self.session.scalars(select(Post)))
+
+    def get_posts_by_post_type(self,post_type:str) -> List[Post]:
+        return list(self.session.scalars(select(Post).where(Post.post_type == post_type)))
+
+    def get_posts_by_order(self, order: str) -> List[Post]:
+        print('order: ',order)
+        if order == "good_count_asc":
+            order_by_clause = Post.good_count.asc()
+        elif order == "good_count_desc":  # ÁÁ¾Æ¿ä ¸¹Àº¼ø
+            order_by_clause = Post.good_count.desc()
+        elif order == "created_time_asc":
+            order_by_clause = Post.created_time.asc()
+        elif order == "created_time_desc":  # ÃÖ½Å¼ø
+            order_by_clause = Post.created_time.desc()
+        elif order == "updated_time_asc":
+            order_by_clause = Post.updated_time.asc()
+        elif order == "updated_time_desc":  # ¾÷µ¥ÀÌÆ® ÃÖ½Å¼ø
+            order_by_clause = Post.updated_time.desc()
+        else:
+            return list(self.session.scalars(select(Post)))
+
+        return list(self.session.scalars(select(Post)
+                                         .order_by(order_by_clause)))
+    def get_posts_by_type_and_order(self, post_type: str, order: str) -> List[Post]:
+        print('order: ',order)
+        if order == "good_count_asc":
+            order_by_clause = Post.good_count.asc()
+        elif order == "good_count_desc":  # ÁÁ¾Æ¿ä ¸¹Àº¼ø
+            order_by_clause = Post.good_count.desc()
+        elif order == "created_time_asc":
+            order_by_clause = Post.created_time.asc()
+        elif order == "created_time_desc":  # ÃÖ½Å¼ø
+            order_by_clause = Post.created_time.desc()
+        elif order == "updated_time_asc":
+            order_by_clause = Post.updated_time.asc()
+        elif order == "updated_time_desc":  # ¾÷µ¥ÀÌÆ® ÃÖ½Å¼ø
+            order_by_clause = Post.updated_time.desc()
+        else:
+            return list(self.session.scalars(select(Post).where(Post.post_type == post_type)))
+
+        return list(self.session.scalars(select(Post)
+                                         .where(Post.post_type == post_type)
+                                         .order_by(order_by_clause)))
+    def get_post_by_id(self, post_id: int) -> Post | None:
+        return self.session.scalar(select(Post).where(Post.post_id == post_id))
+
+    def get_posts_by_user_id(self, user_id: str) -> List[Post]:
+        return list(self.session.scalars(select(Post).where(Post.user_id == user_id)))
+
+    def get_is_my_post(self, post_id: int, user_id: str) -> bool:
+        post: Post = self.session.scalar(select(Post).where(Post.post_id == post_id))
+        if post.user_id == user_id:
+            return True
+        else:
+            return False
+
+    def get_posts_by_date(self, start_date: datetime, end_date: datetime) -> List[Post]:
+        # ½ÃÀÛ ³¯Â¥¿Í Á¾·á ³¯Â¥ »çÀÌÀÇ Áø´Ü °á°ú¸¦ Á¶È¸ÇÕ´Ï´Ù.
+        return list(self.session.scalars(select(Post).where(Post.created_time.between(start_date, end_date))))
+
+    def get_posts_by_month(self, start_date: datetime, user_id: str) -> List[Post]:
+        month_start = start_date.replace(day=1)
+
+        if start_date.month == 12:
+            month_end = start_date.replace(year=start_date.year + 1, month=1, day=1) - timedelta(days=1)
+        else:
+            month_end = start_date.replace(month=start_date.month + 1, day=1) - timedelta(days=1)
+
+        return list(self.session.scalars(select(Post).where(
+            Post.created_time.between(month_start, month_end),
+            Post.user_id == user_id
+        )))
+
+    def create_post(self, post: Post) -> Post:
+        self.session.add(instance=post)
+        self.session.commit()
+        self.session.refresh(post)
+        return post
+
+    def update_post(self, post: Post, trigger_on_update: bool) -> Post:
+        # post ÀÎ½ºÅÏ½º¿¡ ÀÖ´Â º¯°æ »çÇ×À» µñ¼Å³Ê¸®·Î °¡Á®¿É´Ï´Ù.
+        data_to_update = {column.name: getattr(post, column.name) for column in post.__table__.columns}
+        print('data_to_update: ',data_to_update)
+        # trigger_on_update°¡ False¶ó¸é, updated_time ÄÃ·³À» ¾÷µ¥ÀÌÆ®¿¡¼­ Á¦¿ÜÇÕ´Ï´Ù.
+        if not trigger_on_update and 'updated_time' in data_to_update:
+            del data_to_update['updated_time']
+
+        # ¾÷µ¥ÀÌÆ® ½ÇÇà
+        self.session.execute(
+            update(Post).
+            where(Post.post_id == post.post_id).
+            values(**data_to_update).
+            execution_options(synchronize_session="fetch")
+        )
+        self.session.commit()
+
+        # ¾÷µ¥ÀÌÆ® ÇÑ Æ÷½ºÆ® °´Ã¼¸¦ ¸®ÅÏ
+        return self.session.get(Post, post.post_id)
+
+    def delete_post(self, post_id: int, user_id: str) -> None:
+        self.session.execute(delete(Post).where(
+            Post.post_id == post_id,
+            Post.user_id == user_id,
+        ))
+        self.session.commit()
+
+class PostImageRepository:
+    def __init__(self, session: Session = Depends(get_db)):
+        self.session = session
+
+    def create_post_image(self, post_image: PostImage) -> PostImage:
+        self.session.add(instance=post_image)
+        self.session.commit()
+        self.session.refresh(post_image)
+        return post_image
+
+    def update_post_image(self, post_image: PostImage) -> PostImage:
+        self.session.add(instance=post_image)
+        self.session.commit()
+        self.session.refresh(post_image)
+        return post_image
+
+    async def delete_post_image(self, post_image_id: str) -> None:
+        self.session.execute(delete(PostImage).where(
+            PostImage.post_img_id == post_image_id  # ¿©±â¼­ post_img_id·Î ¼öÁ¤
+        ))
+        self.session.commit()
+        await delete_image_from_firebase_storage(post_image_id)
+
+    def get_post_images(self) -> List[PostImage]:
+        return list(self.session.scalars(select(PostImage)))
+
+    def get_post_images_by_post_id(self, post_id: int) -> List[PostImage]:
+        return list(self.session.scalars(select(PostImage).where(PostImage.post_id == post_id)))
+
+    def get_post_preview_images_by_post_id(self, post_id: int) -> PostImage:
+        return self.session.scalar(
+            select(PostImage)
+            .where(PostImage.post_id == post_id)
+            .order_by(PostImage.created_time.asc())  # °¡Àå ¸ÕÀú »ý¼ºµÈ ÀÌ¹ÌÁö¸¦ ¼±ÅÃ
+            .limit(1)  # Ã¹ ¹øÂ° °á°ú¸¸ °¡Á®¿È
+        )
+
+class CommentRepository:
+    def __init__(self, session: Session = Depends(get_db)):
+        self.session = session
+
+    def create_comment(self, comment: Comment) -> Comment:
+        self.session.add(instance=comment)
+        self.session.commit()
+        self.session.refresh(comment)
+        return comment
+
+    def update_comment(self, comment: Comment) -> Comment:
+        self.session.add(instance=comment)
+        self.session.commit()
+        self.session.refresh(comment)
+        return comment
+
+    def delete_comment(self, comment_id: int) -> None:
+        self.session.execute(delete(Comment).where(
+            Comment.comment_id == comment_id
+        ))
+        self.session.commit()
+
+    def get_comments(self) -> List[Comment]:
+        return list(self.session.scalars(select(Comment)))
+
+    def get_comment_by_id(self, comment_id: int) -> Comment:
+        return self.session.scalar(select(Comment).where(Comment.post_id == comment_id))
+
+    def get_comments_by_post_id(self, post_id: int) -> List[Comment]:
+        return list(self.session.scalars(select(Comment).where(Comment.post_id == post_id)))
+
+    def get_comments_by_user_id(self, user_id: str) -> List[Comment]:
+        return list(self.session.scalars(select(Comment).where(User.user_id == user_id)))
+
+    def get_is_my_comment(self, comment_id: int, user_id: str) -> bool:
+        comment: Comment = self.session.scalar(select(Comment).where(Comment.comment_id == comment_id))
+        if comment.user_id == user_id:
+            return True
+        else:
+            return False
